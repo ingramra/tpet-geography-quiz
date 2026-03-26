@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TPET Geography Quiz - Interactive Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0a0e1a; color: #e0e0e0; overflow: hidden; height: 100vh; }
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Top bar */
+#topBar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #111827; border-bottom: 1px solid #1e3a5f; z-index: 1000; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
+#topBar h1 { font-size: 16px; font-weight: 600; color: #60a5fa; letter-spacing: 0.5px; }
+#controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#controls select, #controls button { padding: 5px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e0e0e0; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+#controls select:hover, #controls button:hover { border-color: #60a5fa; background: #253348; }
+#controls button.active { background: #1e40af; border-color: #3b82f6; }
+#scoreDisplay { display: flex; gap: 12px; font-size: 12px; align-items: center; }
+#scoreDisplay span { color: #94a3b8; }
+#scoreDisplay .correct { color: #34d399; }
+#scoreDisplay .incorrect { color: #f87171; }
+#scoreDisplay .streak { color: #fbbf24; }
+
+/* Round info bar */
+#roundBar { display: none; padding: 6px 16px; background: #1e293b; border-bottom: 1px solid #1e3a5f; z-index: 999; flex-shrink: 0; }
+#roundBar .inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+#roundBar .roundProgress { font-size: 13px; font-weight: 600; color: #f8fafc; }
+#roundBar .roundTimer { font-size: 13px; font-family: monospace; color: #fbbf24; }
+#roundBar .roundTimer.danger { color: #f87171; }
+#roundBar .progressBarOuter { flex: 1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; max-width: 300px; }
+#roundBar .progressBarInner { height: 100%; background: #3b82f6; border-radius: 3px; transition: width 0.3s; }
+#roundBar button { padding: 4px 12px; border-radius: 6px; border: 1px solid #991b1b; background: #7f1d1d; color: #fca5a5; font-size: 11px; cursor: pointer; }
+
+/* Main content */
+#mainContent { display: flex; flex: 1; overflow: hidden; }
+
+/* Map */
+#map { flex: 1; cursor: crosshair; z-index: 1; }
+.leaflet-container { background: #0c1929; cursor: crosshair; }
+.leaflet-control-zoom { border: 1px solid #334155 !important; }
+.leaflet-control-zoom a { background: #1e293b !important; color: #e0e0e0 !important; border-color: #334155 !important; }
+.leaflet-control-zoom a:hover { background: #334155 !important; }
+
+/* Question panel */
+#questionPanel { width: 360px; background: #111827; border-left: 1px solid #1e3a5f; display: flex; flex-direction: column; flex-shrink: 0; z-index: 1000; }
+#questionArea { padding: 16px; flex: 1; overflow-y: auto; }
+#questionArea h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 12px; }
+#questionText { font-size: 18px; font-weight: 600; color: #f8fafc; line-height: 1.4; margin-bottom: 8px; }
+#questionHint { font-size: 13px; color: #64748b; margin-bottom: 16px; font-style: italic; }
+#questionCategory { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.cat-capital { background: #1e3a5f; color: #60a5fa; }
+.cat-chokepoint { background: #3b1f1f; color: #f87171; }
+.cat-waterway { background: #1a3a2a; color: #34d399; }
+.cat-fleet { background: #3b2f1f; color: #fbbf24; }
+.cat-cocom { background: #2d1f3b; color: #c084fc; }
+.cat-country { background: #1f3b2d; color: #6ee7b7; }
+.cat-keywater { background: #1f2d3b; color: #38bdf8; }
+
+#feedbackArea { padding: 16px; border-top: 1px solid #1e3a5f; min-height: 140px; }
+#feedbackText { font-size: 14px; line-height: 1.5; }
+#feedbackText.success { color: #34d399; }
+#feedbackText.close { color: #fbbf24; }
+#feedbackText.miss { color: #f87171; }
+#distanceInfo { font-size: 12px; color: #64748b; margin-top: 8px; }
+#nextBtn { display: block; width: 100%; padding: 12px; background: #1e40af; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 12px; transition: background 0.15s; }
+#nextBtn:hover { background: #2563eb; }
+#skipBtn { display: block; width: 100%; padding: 8px; background: transparent; color: #64748b; border: 1px solid #334155; border-radius: 8px; font-size: 12px; cursor: pointer; margin-top: 8px; transition: all 0.15s; }
+#skipBtn:hover { border-color: #64748b; color: #94a3b8; }
+
+/* History */
+#historyArea { padding: 16px; border-top: 1px solid #1e3a5f; max-height: 220px; overflow-y: auto; }
+#historyArea h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 8px; }
+.historyItem { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #1e293b; }
+.historyItem .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.historyItem .dot.green { background: #34d399; }
+.historyItem .dot.yellow { background: #fbbf24; }
+.historyItem .dot.red { background: #f87171; }
+.historyItem span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Coordinate display */
+#coordDisplay { position: absolute; bottom: 24px; left: 60px; z-index: 900; background: rgba(17,24,39,0.85); padding: 4px 10px; border-radius: 4px; font-size: 12px; color: #94a3b8; font-family: monospace; pointer-events: none; border: 1px solid #1e3a5f; }
+
+/* ======= OVERLAY SCREENS ======= */
+.overlay { position: fixed; inset: 0; background: rgba(10,14,26,0.97); display: flex; align-items: center; justify-content: center; z-index: 2000; }
+.overlay .card { background: #111827; border: 1px solid #1e3a5f; border-radius: 16px; padding: 36px 40px; max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto; }
+.overlay h1 { font-size: 24px; color: #60a5fa; margin-bottom: 6px; text-align: center; }
+.overlay .subtitle { font-size: 13px; color: #94a3b8; text-align: center; margin-bottom: 24px; }
+.overlay label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 16px; }
+.overlay select, .overlay input[type=number] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e0e0e0; font-size: 14px; }
+.overlay .row { display: flex; gap: 16px; }
+.overlay .row > div { flex: 1; }
+.overlay .checkbox-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px; background: #1e293b; border-radius: 8px; cursor: pointer; }
+.overlay .checkbox-row input { width: 18px; height: 18px; accent-color: #3b82f6; }
+.overlay .checkbox-row span { font-size: 13px; color: #e0e0e0; }
+.overlay .checkbox-row small { font-size: 11px; color: #64748b; display: block; margin-top: 2px; }
+.overlay .btn-row { display: flex; gap: 12px; margin-top: 28px; }
+.overlay .btn-primary { flex: 1; padding: 14px; background: #1e40af; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.overlay .btn-primary:hover { background: #2563eb; }
+.overlay .btn-secondary { flex: 1; padding: 14px; background: transparent; color: #94a3b8; border: 1px solid #334155; border-radius: 8px; font-size: 15px; cursor: pointer; transition: all 0.15s; }
+.overlay .btn-secondary:hover { border-color: #60a5fa; color: #e0e0e0; }
+.cats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+.cats span { padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+.keyhint { font-size: 11px; color: #475569; margin-top: 12px; text-align: center; }
+
+/* Results screen extras */
+.results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+.results-stat { background: #1e293b; border-radius: 10px; padding: 14px; text-align: center; }
+.results-stat .val { font-size: 28px; font-weight: 700; }
+.results-stat .lbl { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.results-stat.green .val { color: #34d399; }
+.results-stat.red .val { color: #f87171; }
+.results-stat.blue .val { color: #60a5fa; }
+.results-stat.yellow .val { color: #fbbf24; }
+.cat-breakdown { margin: 16px 0; }
+.cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+.cat-row .cat-name { width: 110px; font-weight: 600; }
+.cat-row .cat-bar-outer { flex: 1; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; }
+.cat-row .cat-bar-inner { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.cat-row .cat-pct { width: 50px; text-align: right; font-family: monospace; }
+.missed-list { margin: 12px 0; max-height: 180px; overflow-y: auto; }
+.missed-item { padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #1e293b; color: #f87171; }
+.missed-item .correct-answer { color: #93c5fd; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  #mainContent { flex-direction: column; }
+  #questionPanel { width: 100%; max-height: 40vh; border-left: none; border-top: 1px solid #1e3a5f; }
+  #map { min-height: 50vh; }
+  .overlay .card { padding: 24px 20px; }
+  .results-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topBar">
+    <h1>TPET GEOGRAPHY TRAINER</h1>
+    <div id="controls">
+      <select id="categoryFilter">
+        <option value="all">All Categories</option>
+        <option value="capital">Capitals</option>
+        <option value="country">Countries</option>
+        <option value="chokepoint">Chokepoints / Straits</option>
+        <option value="waterway">Waterways / Seas</option>
+        <option value="keywater">Key Waterways (Priority)</option>
+        <option value="fleet">Fleet HQs</option>
+        <option value="cocom">COCOM AORs</option>
+      </select>
+      <select id="tileSelect">
+        <option value="otm">Topographic</option>
+        <option value="street">Street (No Labels)</option>
+        <option value="esri">Satellite</option>
+        <option value="dark">Dark (No Labels)</option>
+      </select>
+      <button id="resetView">Reset View</button>
+      <button id="homeBtn">Home</button>
+      <button id="newRoundBtn">New Round</button>
+      <button id="resetQuiz" style="background:#7f1d1d;border-color:#991b1b">Reset All</button>
+    </div>
+    <div id="scoreDisplay">
+      <span class="correct"><strong id="correctCount">0</strong> correct</span>
+      <span class="incorrect"><strong id="incorrectCount">0</strong> missed</span>
+      <span class="streak">streak <strong id="streakCount">0</strong></span>
+      <span>/ <strong id="totalCount">0</strong></span>
+    </div>
+  </div>
+
+  <div id="roundBar">
+    <div class="inner">
+      <div class="roundProgress">Q <span id="roundCurrent">1</span> / <span id="roundTotal">30</span></div>
+      <div class="progressBarOuter"><div class="progressBarInner" id="roundProgressBar" style="width:0%"></div></div>
+      <div class="roundTimer" id="roundTimer">--:--</div>
+      <button id="endRoundBtn">End Round</button>
+    </div>
+  </div>
+
+  <div id="mainContent">
+    <div id="map"></div>
+    <div id="coordDisplay">--</div>
+    <div id="questionPanel">
+      <div id="questionArea">
+        <h2>Current Question</h2>
+        <div id="questionCategory"></div>
+        <div id="questionText">Loading...</div>
+        <div id="questionHint"></div>
+      </div>
+      <div id="feedbackArea">
+        <div id="feedbackText">Click on the map to answer</div>
+        <div id="distanceInfo"></div>
+        <button id="nextBtn" style="display:none">Next Question &rarr;</button>
+        <button id="skipBtn">Skip / Show Answer</button>
+      </div>
+      <div id="historyArea">
+        <h3>Recent History</h3>
+        <div id="historyList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- START SCREEN -->
+  <div id="startScreen" class="overlay">
+    <div class="card" style="text-align:center">
+      <h1>TPET Geography Trainer</h1>
+      <p class="subtitle">Reserve Naval Intelligence Officer TPET I &mdash; Geographic Knowledge</p>
+      <div class="cats">
+        <span class="cat-capital">Capitals</span>
+        <span class="cat-country">Countries</span>
+        <span class="cat-chokepoint">Chokepoints</span>
+        <span class="cat-waterway">Waterways</span>
+        <span class="cat-keywater">Key Waterways</span>
+        <span class="cat-fleet">Fleet HQs</span>
+        <span class="cat-cocom">COCOM AORs</span>
+      </div>
+      <p style="font-size:13px;color:#64748b;margin-bottom:24px;line-height:1.7;text-align:left">
+        Click locations on a real-world map to test your knowledge of strategic geography.
+        Play in <strong style="color:#e0e0e0">free play</strong> mode for open-ended drilling, or start a
+        <strong style="color:#e0e0e0">timed round</strong> with a configurable number of questions.
+        The trainer tracks your weakest categories and can generate rounds that target them.
+      </p>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="startFreePlay()">Free Play</button>
+        <button class="btn-secondary" onclick="showRoundConfig()">Start Round</button>
+      </div>
+      <p class="keyhint">Keyboard: Enter/Space = next | S = skip | R = reset view</p>
+    </div>
+  </div>
+
+  <!-- ROUND CONFIG MODAL -->
+  <div id="roundConfigScreen" class="overlay" style="display:none">
+    <div class="card">
+      <h1>Configure Round</h1>
+      <p class="subtitle">Set up a structured quiz round</p>
+      <div class="row">
+        <div>
+          <label>Number of Questions</label>
+          <input type="number" id="cfgQuestions" value="30" min="5" max="100" step="5"/>
+        </div>
+        <div>
+          <label>Time Limit</label>
+          <select id="cfgTimeLimit">
+            <option value="0">No limit</option>
+            <option value="300">5 minutes</option>
+            <option value="600">10 minutes</option>
+            <option value="900">15 minutes</option>
+            <option value="1200">20 minutes</option>
+            <option value="1800">30 minutes</option>
+          </select>
+        </div>
+      </div>
+      <label>Category Focus</label>
+      <select id="cfgCategory">
+        <option value="all">All Categories (mixed)</option>
+        <option value="capital">Capitals Only</option>
+        <option value="country">Countries Only</option>
+        <option value="chokepoint">Chokepoints / Straits Only</option>
+        <option value="waterway">Waterways / Seas Only</option>
+        <option value="keywater">Key Waterways (Priority)</option>
+        <option value="fleet">Fleet HQs Only</option>
+        <option value="cocom">COCOM AORs Only</option>
+        <option value="weakness">Target Weakest Areas</option>
+      </select>
+      <label class="checkbox-row" style="cursor:pointer">
+        <input type="checkbox" id="cfgHideHints"/>
+        <div>
+          <span>Hide hints (hard mode)</span>
+          <small>Strategic significance hints will be hidden during the round</small>
+        </div>
+      </label>
+      <label class="checkbox-row" style="cursor:pointer">
+        <input type="checkbox" id="cfgShuffleHard"/>
+        <div>
+          <span>Prioritize previously missed items</span>
+          <small>Questions you've missed before will appear more frequently</small>
+        </div>
+      </label>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="startRound()">Start Round</button>
+        <button class="btn-secondary" onclick="hideRoundConfig()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS SCREEN -->
+  <div id="resultsScreen" class="overlay" style="display:none">
+    <div class="card">
+      <h1 id="resultsTitle">Round Complete</h1>
+      <p class="subtitle" id="resultsSubtitle"></p>
+      <div class="results-grid">
+        <div class="results-stat green"><div class="val" id="resCorrect">0</div><div class="lbl">Correct</div></div>
+        <div class="results-stat red"><div class="val" id="resMissed">0</div><div class="lbl">Missed</div></div>
+        <div class="results-stat blue"><div class="val" id="resAccuracy">0%</div><div class="lbl">Accuracy</div></div>
+        <div class="results-stat yellow"><div class="val" id="resBestStreak">0</div><div class="lbl">Best Streak</div></div>
+      </div>
+      <h3 style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Accuracy by Category</h3>
+      <div class="cat-breakdown" id="catBreakdown"></div>
+      <div id="missedSection">
+        <h3 style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px">Items to Review</h3>
+        <div class="missed-list" id="missedList"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="showRoundConfig()">New Round</button>
+        <button class="btn-secondary" onclick="backToFreePlay()">Free Play</button>
+        <button class="btn-secondary" onclick="goHome()">Home</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// GEOGRAPHIC DATA — All from TPET Study Guide Section 6 + 3.3
+// ============================================================
+const geoData = {
+  capitals: [
+    { name: "Moscow", country: "Russia", lat: 55.75, lon: 37.62, cocom: "EUCOM", hint: "Primary near-peer adversary; nuclear power; Ukraine conflict; Arctic claims" },
+    { name: "Beijing", country: "China (PRC)", lat: 39.90, lon: 116.40, cocom: "INDOPACOM", hint: "Pacing challenge; South China Sea; Taiwan; Belt and Road Initiative" },
+    { name: "Tehran", country: "Iran", lat: 35.69, lon: 51.39, cocom: "CENTCOM", hint: "Regional destabilizer; nuclear program; proxy forces (Houthis, Hezbollah)" },
+    { name: "Pyongyang", country: "North Korea (DPRK)", lat: 39.02, lon: 125.75, cocom: "INDOPACOM", hint: "Nuclear/ballistic missile threat; Korean Peninsula stability" },
+    { name: "Taipei", country: "Taiwan", lat: 25.03, lon: 121.57, cocom: "INDOPACOM", hint: "Cross-strait tensions; semiconductor supply chain; US defense commitments" },
+    { name: "Tokyo", country: "Japan", lat: 35.68, lon: 139.69, cocom: "INDOPACOM", hint: "Key ally; 7th Fleet homeport (Yokosuka); USFJ" },
+    { name: "Seoul", country: "South Korea", lat: 37.57, lon: 126.98, cocom: "INDOPACOM", hint: "Key ally; USFK; Camp Humphreys; Korea Strait" },
+    { name: "Jerusalem", country: "Israel", lat: 31.77, lon: 35.23, cocom: "CENTCOM", hint: "Key partner; regional security; intelligence sharing" },
+    { name: "Riyadh", country: "Saudi Arabia", lat: 24.69, lon: 46.72, cocom: "CENTCOM", hint: "Regional partner; energy security; Arabian Gulf stability" },
+    { name: "Kyiv", country: "Ukraine", lat: 50.45, lon: 30.52, cocom: "EUCOM", hint: "Active conflict with Russia; NATO partnership" },
+    { name: "New Delhi", country: "India", lat: 28.61, lon: 77.21, cocom: "INDOPACOM", hint: "Strategic partner; counterbalance to China; Indian Ocean security" },
+    { name: "Ankara", country: "Turkey", lat: 39.93, lon: 32.86, cocom: "EUCOM", hint: "NATO ally; controls Turkish Straits; regional influence" },
+    { name: "Islamabad", country: "Pakistan", lat: 33.69, lon: 73.04, cocom: "CENTCOM", hint: "Nuclear state; border with Afghanistan; CT concerns" },
+    { name: "Cairo", country: "Egypt", lat: 30.04, lon: 31.24, cocom: "CENTCOM", hint: "Controls Suez Canal; regional stability partner" },
+    { name: "Berlin", country: "Germany", lat: 52.52, lon: 13.41, cocom: "EUCOM", hint: "NATO ally; EUCOM/AFRICOM HQ (Stuttgart); key European partner" },
+    { name: "Abu Dhabi", country: "UAE", lat: 24.45, lon: 54.65, cocom: "CENTCOM", hint: "CENTCOM AOR; Gulf partner" },
+    { name: "Doha", country: "Qatar", lat: 25.29, lon: 51.53, cocom: "CENTCOM", hint: "CENTCOM AOR; Al Udeid Air Base" },
+    { name: "Manama", country: "Bahrain", lat: 26.23, lon: 50.59, cocom: "CENTCOM", hint: "NSA Bahrain; 5th Fleet HQ" },
+    { name: "Kuwait City", country: "Kuwait", lat: 29.38, lon: 47.99, cocom: "CENTCOM", hint: "CENTCOM AOR; Camp Arifjan" },
+    { name: "Amman", country: "Jordan", lat: 31.95, lon: 35.93, cocom: "CENTCOM", hint: "CENTCOM AOR; key regional partner" },
+    { name: "Beirut", country: "Lebanon", lat: 33.89, lon: 35.50, cocom: "CENTCOM", hint: "CENTCOM AOR; Hezbollah presence" },
+    { name: "Damascus", country: "Syria", lat: 33.51, lon: 36.29, cocom: "CENTCOM", hint: "CENTCOM AOR; civil war; Russian/Iranian presence" },
+    { name: "Baghdad", country: "Iraq", lat: 33.31, lon: 44.37, cocom: "CENTCOM", hint: "CENTCOM AOR; counter-ISIS operations" },
+    { name: "Kabul", country: "Afghanistan", lat: 34.53, lon: 69.17, cocom: "CENTCOM", hint: "CENTCOM AOR; Taliban government since 2021" },
+    { name: "Sana'a", country: "Yemen", lat: 15.37, lon: 44.21, cocom: "CENTCOM", hint: "CENTCOM AOR; Houthi-controlled; Red Sea threats" },
+    { name: "Muscat", country: "Oman", lat: 23.59, lon: 58.54, cocom: "CENTCOM", hint: "CENTCOM AOR; Strait of Hormuz" },
+    { name: "Ulaanbaatar", country: "Mongolia", lat: 47.91, lon: 106.91, cocom: "INDOPACOM", hint: "INDOPACOM AOR; between Russia and China" },
+    { name: "Manila", country: "Philippines", lat: 14.60, lon: 120.98, cocom: "INDOPACOM", hint: "INDOPACOM AOR; South China Sea disputes; EDCA bases" },
+    { name: "Hanoi", country: "Vietnam", lat: 21.03, lon: 105.85, cocom: "INDOPACOM", hint: "INDOPACOM AOR; South China Sea claimant" },
+    { name: "Phnom Penh", country: "Cambodia", lat: 11.56, lon: 104.93, cocom: "INDOPACOM", hint: "INDOPACOM AOR" },
+    { name: "Vientiane", country: "Laos", lat: 17.97, lon: 102.63, cocom: "INDOPACOM", hint: "INDOPACOM AOR" },
+    { name: "Bangkok", country: "Thailand", lat: 13.76, lon: 100.50, cocom: "INDOPACOM", hint: "INDOPACOM AOR; treaty ally" },
+    { name: "Naypyidaw", country: "Myanmar", lat: 19.76, lon: 96.07, cocom: "INDOPACOM", hint: "INDOPACOM AOR" },
+    { name: "Dhaka", country: "Bangladesh", lat: 23.81, lon: 90.41, cocom: "INDOPACOM", hint: "INDOPACOM AOR; Bay of Bengal" },
+    { name: "Colombo", country: "Sri Lanka", lat: 6.93, lon: 79.85, cocom: "INDOPACOM", hint: "INDOPACOM AOR; Indian Ocean strategic position" },
+    { name: "Kuala Lumpur", country: "Malaysia", lat: 3.14, lon: 101.69, cocom: "INDOPACOM", hint: "INDOPACOM AOR; Strait of Malacca" },
+    { name: "Jakarta", country: "Indonesia", lat: -6.21, lon: 106.85, cocom: "INDOPACOM", hint: "INDOPACOM AOR; largest archipelago nation" },
+    { name: "Canberra", country: "Australia", lat: -35.28, lon: 149.13, cocom: "INDOPACOM", hint: "INDOPACOM AOR; AUKUS partner; Five Eyes" },
+    { name: "Wellington", country: "New Zealand", lat: -41.29, lon: 174.78, cocom: "INDOPACOM", hint: "INDOPACOM AOR; Five Eyes" },
+    { name: "Tbilisi", country: "Georgia", lat: 41.72, lon: 44.79, cocom: "EUCOM", hint: "EUCOM AOR; Caucasus; Russia border tensions" },
+    { name: "Yerevan", country: "Armenia", lat: 40.18, lon: 44.51, cocom: "EUCOM", hint: "EUCOM AOR; Caucasus" },
+    { name: "Baku", country: "Azerbaijan", lat: 40.41, lon: 49.87, cocom: "EUCOM", hint: "EUCOM AOR; Caspian Sea energy" },
+    { name: "Minsk", country: "Belarus", lat: 53.90, lon: 27.57, cocom: "EUCOM", hint: "EUCOM AOR; Russia ally" },
+    { name: "Tashkent", country: "Uzbekistan", lat: 41.30, lon: 69.28, cocom: "CENTCOM", hint: "Central Asian 'Stan'; CENTCOM AOR" },
+    { name: "Bishkek", country: "Kyrgyzstan", lat: 42.87, lon: 74.59, cocom: "CENTCOM", hint: "Central Asian 'Stan'; CENTCOM AOR" },
+    { name: "Dushanbe", country: "Tajikistan", lat: 38.56, lon: 68.77, cocom: "CENTCOM", hint: "Central Asian 'Stan'; CENTCOM AOR" },
+    { name: "Ashgabat", country: "Turkmenistan", lat: 37.96, lon: 58.33, cocom: "CENTCOM", hint: "Central Asian 'Stan'; CENTCOM AOR" },
+    { name: "Nur-Sultan", country: "Kazakhstan", lat: 51.17, lon: 71.43, cocom: "CENTCOM", hint: "Central Asian 'Stan'; CENTCOM AOR; largest in Central Asia" },
+  ],
+  chokepoints: [
+    { name: "Strait of Hormuz", lat: 26.57, lon: 56.25, hint: "Persian/Arabian Gulf \u2194 Gulf of Oman; ~20% of global petroleum transit; Iran threat" },
+    { name: "Suez Canal", lat: 30.46, lon: 32.35, hint: "Mediterranean \u2194 Red Sea; ~12% of global trade; Egypt controls" },
+    { name: "Strait of Bab-el-Mandeb", lat: 12.58, lon: 43.33, hint: "Red Sea \u2194 Gulf of Aden; southern gateway to Suez; Djibouti (Camp Lemonnier)" },
+    { name: "Strait of Malacca", lat: 2.50, lon: 101.20, hint: "Indian Ocean \u2194 South China Sea; ~25% of global trade; busiest waterway" },
+    { name: "Panama Canal", lat: 9.08, lon: -79.68, hint: "Atlantic \u2194 Pacific; critical transit between oceans" },
+    { name: "Strait of Gibraltar", lat: 35.96, lon: -5.50, hint: "Atlantic \u2194 Mediterranean; only 8 miles wide; Spain/Morocco" },
+    { name: "Bosporus Strait", lat: 41.12, lon: 29.08, hint: "Black Sea \u2194 Sea of Marmara; Turkey controls; Montreux Convention" },
+    { name: "Dardanelles", lat: 40.20, lon: 26.40, hint: "Sea of Marmara \u2194 Aegean Sea; part of Turkish Straits" },
+    { name: "Korea Strait", lat: 34.00, lon: 129.00, hint: "Sea of Japan \u2194 East China Sea; 7th Fleet operations" },
+    { name: "Luzon Strait", lat: 19.50, lon: 121.00, hint: "South China Sea \u2194 Philippine Sea; key passage near Taiwan; encompasses Bashi, Balintang, and Babuyan Channels" },
+    { name: "Bashi Channel", lat: 21.00, lon: 121.50, hint: "Northernmost Luzon Strait channel; between Taiwan (Orchid Island) and Batanes; primary PLAN transit route to Pacific" },
+    { name: "Balintang Channel", lat: 19.95, lon: 122.10, hint: "Central Luzon Strait channel; between Batanes and Babuyan Islands; submarine transit corridor" },
+    { name: "Babuyan Channel", lat: 18.70, lon: 121.70, hint: "Southernmost Luzon Strait channel; between Babuyan Islands and northern Luzon" },
+    { name: "Miyako Strait", lat: 25.80, lon: 126.50, hint: "Between Okinawa and Miyako-jima; primary PLAN route to western Pacific; part of First Island Chain" },
+    { name: "Tsugaru Strait", lat: 41.55, lon: 140.40, hint: "Between Honshu and Hokkaido; connects Sea of Japan to Pacific Ocean; Russian Pacific Fleet transit route; one of five international straits around Japan" },
+    { name: "La P\u00e9rouse Strait", lat: 45.80, lon: 142.00, hint: "Also called S\u014dya Strait; between Hokkaido (Japan) and Sakhalin (Russia); connects Sea of Japan to Sea of Okhotsk; Russian fleet access route" },
+    { name: "Strait of Tartary", lat: 51.50, lon: 141.50, hint: "Also called Mamiya Strait; between Sakhalin Island and Russian mainland; connects Sea of Japan to Sea of Okhotsk; narrow and seasonally ice-bound" },
+    { name: "Danish Straits", lat: 55.80, lon: 11.00, hint: "Baltic Sea \u2194 North Sea; Russian Baltic Fleet access" },
+    { name: "English Channel", lat: 50.50, lon: -1.00, hint: "North Sea \u2194 Atlantic; major commercial/naval lane" },
+    { name: "Mozambique Channel", lat: -17.00, lon: 41.00, hint: "Between Mozambique and Madagascar; shipping around Africa" },
+    { name: "Cape Horn / Drake Passage", lat: -56.00, lon: -67.00, hint: "Atlantic \u2194 Pacific (southern route); harsh conditions" },
+  ],
+  waterways: [
+    { name: "Mediterranean Sea", lat: 35.00, lon: 18.00, hint: "EUCOM/CENTCOM/AFRICOM; 6th Fleet" },
+    { name: "Red Sea", lat: 20.00, lon: 38.50, hint: "CENTCOM; Suez to Bab-el-Mandeb; Houthi attacks" },
+    { name: "Gulf of Aden", lat: 12.50, lon: 47.00, hint: "CENTCOM; south of Bab-el-Mandeb" },
+    { name: "Arabian Sea", lat: 16.00, lon: 63.00, hint: "CENTCOM; between India and Arabian Peninsula" },
+    { name: "Persian / Arabian Gulf", lat: 26.50, lon: 51.50, hint: "CENTCOM; oil transit; 5th Fleet; Iran" },
+    { name: "Gulf of Oman", lat: 24.50, lon: 58.80, hint: "CENTCOM; connects via Strait of Hormuz" },
+    { name: "Caspian Sea", lat: 41.50, lon: 51.00, hint: "CENTCOM/EUCOM border; landlocked" },
+    { name: "South China Sea", lat: 12.00, lon: 114.00, hint: "INDOPACOM; contested; China nine-dash line" },
+    { name: "Sea of Japan", lat: 40.00, lon: 135.00, hint: "INDOPACOM; Japan/Korea; 7th Fleet" },
+    { name: "Yellow Sea", lat: 35.50, lon: 123.00, hint: "INDOPACOM; China/Korean Peninsula" },
+    { name: "Philippine Sea", lat: 18.00, lon: 132.00, hint: "INDOPACOM; east of Philippines" },
+    { name: "Bay of Bengal", lat: 14.00, lon: 87.00, hint: "INDOPACOM; India/SE Asia" },
+    { name: "Gulf of Thailand", lat: 9.50, lon: 101.00, hint: "INDOPACOM; Thailand/Cambodia/Vietnam" },
+    { name: "Gulf of Tonkin", lat: 19.50, lon: 107.50, hint: "INDOPACOM; Vietnam/China" },
+    { name: "Coral Sea", lat: -18.00, lon: 155.00, hint: "INDOPACOM; NE of Australia" },
+    { name: "Tasman Sea", lat: -37.00, lon: 163.00, hint: "INDOPACOM; Australia/NZ" },
+    { name: "Java Sea", lat: -5.00, lon: 112.00, hint: "INDOPACOM; Java/Borneo" },
+    { name: "Celebes Sea", lat: 3.50, lon: 123.00, hint: "INDOPACOM; Philippines/Borneo" },
+    { name: "Sulu Sea", lat: 8.00, lon: 120.00, hint: "INDOPACOM; Philippines/Borneo" },
+    { name: "Andaman Sea", lat: 10.50, lon: 96.00, hint: "INDOPACOM; Myanmar/Thailand" },
+    { name: "Black Sea", lat: 43.50, lon: 34.00, hint: "EUCOM; Russian Black Sea Fleet" },
+    { name: "Baltic Sea", lat: 58.00, lon: 20.00, hint: "EUCOM; Russian Baltic Fleet; Danish Straits" },
+    { name: "North Sea", lat: 57.00, lon: 3.00, hint: "EUCOM; UK/Scandinavia" },
+    { name: "Norwegian Sea", lat: 67.00, lon: 3.00, hint: "EUCOM; Russian sub transit; GIUK gap" },
+    { name: "Barents Sea", lat: 73.00, lon: 35.00, hint: "EUCOM; Arctic; Russian Northern Fleet" },
+    { name: "Adriatic Sea", lat: 42.50, lon: 16.00, hint: "EUCOM; Italy/Balkans" },
+    { name: "Aegean Sea", lat: 38.50, lon: 25.00, hint: "EUCOM; Greece/Turkey; to Dardanelles" },
+    { name: "Irish Sea", lat: 53.50, lon: -5.00, hint: "EUCOM; Ireland/Great Britain" },
+    { name: "Bay of Biscay", lat: 45.00, lon: -5.00, hint: "EUCOM; France/Spain" },
+    { name: "Gulf of Guinea", lat: 2.00, lon: 2.00, hint: "AFRICOM; West Africa; oil; piracy" },
+    { name: "Caribbean Sea", lat: 15.00, lon: -73.00, hint: "SOUTHCOM; 4th Fleet" },
+  ],
+  fleets: [
+    { name: "2nd Fleet HQ", loc: "Norfolk, VA", lat: 36.85, lon: -76.29, hint: "NORTHCOM/USFF; Atlantic ops" },
+    { name: "3rd Fleet HQ", loc: "San Diego, CA", lat: 32.68, lon: -117.15, hint: "INDOPACOM/PACFLT; Eastern Pacific" },
+    { name: "4th Fleet HQ", loc: "Mayport, FL", lat: 30.39, lon: -81.40, hint: "SOUTHCOM/NAVSO; Caribbean/S. America" },
+    { name: "5th Fleet HQ", loc: "Manama, Bahrain", lat: 26.23, lon: 50.59, hint: "CENTCOM/NAVCENT; Persian Gulf/Red Sea" },
+    { name: "6th Fleet HQ", loc: "Naples, Italy", lat: 40.84, lon: 14.25, hint: "EUCOM/NAVEUR; Mediterranean/Black Sea" },
+    { name: "7th Fleet HQ", loc: "Yokosuka, Japan", lat: 35.28, lon: 139.67, hint: "INDOPACOM/PACFLT; W. Pacific; largest fwd-deployed fleet" },
+    { name: "10th Fleet HQ", loc: "Fort Meade, MD", lat: 39.11, lon: -76.77, hint: "CYBERCOM/FLTCYBER; co-located NSA" },
+    { name: "PACFLT HQ", loc: "Pearl Harbor, HI", lat: 21.35, lon: -157.97, hint: "INDOPACOM; commands 3rd & 7th Fleets" },
+    { name: "Camp Lemonnier", loc: "Djibouti", lat: 11.55, lon: 43.15, hint: "AFRICOM CJTF-HOA; only perm US base Africa" },
+    { name: "EUCOM/AFRICOM HQ", loc: "Stuttgart, Germany", lat: 48.78, lon: 9.18, hint: "Both COCOMs HQ'd here" },
+    { name: "CENTCOM HQ", loc: "MacDill AFB, FL", lat: 27.85, lon: -82.50, hint: "CENTCOM stateside HQ; Tampa" },
+  ],
+  cocoms: [
+    { name: "NORTHCOM AOR", lat: 45.00, lon: -100.00, hint: "HQ Peterson SFB, CO; homeland defense", bounds: { latN: 90, latS: 15, lonW: -170, lonE: -50 } },
+    { name: "SOUTHCOM AOR", lat: -15.00, lon: -65.00, hint: "HQ Doral, FL; NAVSO/4th Fleet", bounds: { latN: 15, latS: -60, lonW: -120, lonE: -25 } },
+    { name: "EUCOM AOR", lat: 52.00, lon: 15.00, hint: "HQ Stuttgart; NAVEUR/6th Fleet", bounds: { latN: 90, latS: 35, lonW: -12, lonE: 50 } },
+    { name: "AFRICOM AOR", lat: 0.00, lon: 20.00, hint: "HQ Stuttgart; Camp Lemonnier", bounds: { latN: 37, latS: -38, lonW: -25, lonE: 55 } },
+    { name: "CENTCOM AOR", lat: 30.00, lon: 55.00, hint: "HQ MacDill; NAVCENT/5th Fleet", bounds: { latN: 55, latS: 10, lonW: 25, lonE: 82 } },
+    { name: "INDOPACOM AOR", lat: 10.00, lon: 145.00, hint: "HQ Honolulu; PACFLT/3rd+7th Fleets", bounds: { latN: 55, latS: -55, lonW: 60, lonE: 180 } },
+  ]
+};
+
+// ============================================================
+// TILE LAYERS
+// ============================================================
+const tileLayers = {
+  otm: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '&copy; OpenTopoMap', maxZoom: 17 },
+  street: { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', attr: '&copy; CARTO Voyager', maxZoom: 19, hasLabels: true },
+  esri: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '&copy; Esri', maxZoom: 18 },
+  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', attr: '&copy; CARTO', maxZoom: 19, hasLabels: true },
+};
+const labelsUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png';
+
+// ============================================================
+// MAP INIT
+// ============================================================
+let map, currentTileLayer, labelsLayer, markersLayer, cocomLayer;
+const LABELS_MIN_ZOOM = 10;
+
+function initMap() {
+  if (map) return;
+  map = L.map('map', { center: [20, 20], zoom: 3, minZoom: 2, maxZoom: 12, worldCopyJump: true, zoomControl: true });
+  currentTileLayer = L.tileLayer(tileLayers.otm.url, { attribution: tileLayers.otm.attr, maxZoom: tileLayers.otm.maxZoom }).addTo(map);
+  labelsLayer = null;
+  markersLayer = L.layerGroup().addTo(map);
+  cocomLayer = L.layerGroup().addTo(map);
+  map.on('click', handleMapClick);
+  map.on('mousemove', function(e) {
+    const lat = e.latlng.lat, lon = e.latlng.lng;
+    document.getElementById('coordDisplay').textContent = `${Math.abs(lat).toFixed(2)}\u00b0${lat>=0?'N':'S'}  ${Math.abs(lon).toFixed(2)}\u00b0${lon>=0?'E':'W'}`;
+  });
+  document.getElementById('tileSelect').addEventListener('change', function() {
+    switchTileLayer(this.value);
+  });
+  document.getElementById('resetView').addEventListener('click', () => map.setView([20, 20], 3));
+}
+
+function switchTileLayer(key) {
+  const cfg = tileLayers[key];
+  map.removeLayer(currentTileLayer);
+  if (labelsLayer) { map.removeLayer(labelsLayer); labelsLayer = null; }
+  currentTileLayer = L.tileLayer(cfg.url, { attribution: cfg.attr, maxZoom: cfg.maxZoom }).addTo(map);
+  if (cfg.hasLabels) {
+    labelsLayer = L.tileLayer(labelsUrl, { attribution: '', maxZoom: 19, minZoom: LABELS_MIN_ZOOM, pane: 'overlayPane' }).addTo(map);
+  }
+  // Re-add markers and cocom layers on top
+  markersLayer.bringToFront();
+  cocomLayer.bringToFront();
+}
+
+// ============================================================
+// HAVERSINE
+// ============================================================
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let state = {
+  correct: 0, incorrect: 0, streak: 0, bestStreak: 0, total: 0,
+  currentQuestion: null, answered: false, history: [],
+  category: 'all',
+  // Weakness tracking (persists across rounds)
+  catStats: { capital: {c:0,t:0}, country: {c:0,t:0}, chokepoint: {c:0,t:0}, waterway: {c:0,t:0}, keywater: {c:0,t:0}, fleet: {c:0,t:0}, cocom: {c:0,t:0} },
+  missedItems: [], // list of question texts that were missed
+  // Round state
+  roundActive: false,
+  roundQuestions: 0,
+  roundTimeLimit: 0,
+  roundAnswered: 0,
+  roundCorrect: 0,
+  roundIncorrect: 0,
+  roundStreak: 0,
+  roundBestStreak: 0,
+  roundHistory: [],
+  roundHideHints: false,
+  roundStartTime: 0,
+  roundTimerInterval: null,
+};
+
+// ============================================================
+// QUESTION GENERATION
+// ============================================================
+// Key waterways: all chokepoints + strategically critical seas/gulfs from Section 6.2/6.3
+const KEY_WATERWAY_NAMES = [
+  // These waterways are multi-AOR, fleet-hosting, or directly tied to chokepoint corridors/active threats
+  'Mediterranean Sea', 'Red Sea', 'Persian / Arabian Gulf', 'Gulf of Aden', 'Gulf of Oman',
+  'Arabian Sea', 'South China Sea', 'Sea of Japan', 'Philippine Sea', 'Yellow Sea',
+  'Bay of Bengal', 'Black Sea', 'Baltic Sea', 'Norwegian Sea', 'Barents Sea',
+  'Caribbean Sea', 'Gulf of Guinea', 'Caspian Sea',
+];
+
+function getAllQuestions() {
+  let questions = [];
+  geoData.capitals.forEach(c => {
+    questions.push({ text: `Find the capital of ${c.country}`, detail: c.name, fullDetail: `${c.name}, ${c.country}`, lat: c.lat, lon: c.lon, category: 'capital', hint: c.hint, tolerance: 200 });
+  });
+  geoData.capitals.forEach(c => {
+    questions.push({ text: `Click on ${c.country}`, detail: c.country, fullDetail: `${c.name}, ${c.country}`, lat: c.lat, lon: c.lon, category: 'country', hint: `${c.cocom} AOR | Capital: ${c.name}`, tolerance: 350 });
+  });
+  geoData.chokepoints.forEach(c => {
+    questions.push({ text: `Locate the ${c.name}`, detail: c.name, fullDetail: c.name, lat: c.lat, lon: c.lon, category: 'chokepoint', hint: c.hint, tolerance: 250 });
+  });
+  geoData.waterways.forEach(w => {
+    questions.push({ text: `Click on the ${w.name}`, detail: w.name, fullDetail: w.name, lat: w.lat, lon: w.lon, category: 'waterway', hint: w.hint, tolerance: 400 });
+  });
+  geoData.fleets.forEach(f => {
+    questions.push({ text: `Locate the ${f.name}`, detail: `${f.name} (${f.loc})`, fullDetail: `${f.name} \u2014 ${f.loc}`, lat: f.lat, lon: f.lon, category: 'fleet', hint: f.hint, tolerance: 250 });
+  });
+  geoData.cocoms.forEach(c => {
+    questions.push({ text: `Click within the ${c.name}`, detail: c.name, fullDetail: c.name, lat: c.lat, lon: c.lon, category: 'cocom', hint: c.hint, tolerance: 800, bounds: c.bounds });
+  });
+  // Key Waterways: all chokepoints + strategically critical waterways
+  geoData.chokepoints.forEach(c => {
+    questions.push({ text: `Locate the ${c.name}`, detail: c.name, fullDetail: c.name, lat: c.lat, lon: c.lon, category: 'keywater', hint: c.hint, tolerance: 250 });
+  });
+  geoData.waterways.filter(w => KEY_WATERWAY_NAMES.includes(w.name)).forEach(w => {
+    questions.push({ text: `Click on the ${w.name}`, detail: w.name, fullDetail: w.name, lat: w.lat, lon: w.lon, category: 'keywater', hint: w.hint, tolerance: 400 });
+  });
+  return questions;
+}
+
+function getWeakestCategories() {
+  const cats = Object.entries(state.catStats)
+    .filter(([,v]) => v.t >= 2) // need at least 2 attempts
+    .map(([k,v]) => ({ cat: k, accuracy: v.t > 0 ? v.c / v.t : 1 }))
+    .sort((a,b) => a.accuracy - b.accuracy);
+  if (cats.length === 0) return null; // no data yet
+  // Return categories below 70% or bottom 3
+  const weak = cats.filter(c => c.accuracy < 0.7);
+  return weak.length > 0 ? weak.map(c => c.cat) : cats.slice(0, Math.min(3, cats.length)).map(c => c.cat);
+}
+
+function pickQuestion(cat, prioritizeMissed) {
+  let questions = getAllQuestions();
+  if (cat === 'weakness') {
+    const weak = getWeakestCategories();
+    if (weak) questions = questions.filter(q => weak.includes(q.category));
+  } else if (cat !== 'all') {
+    questions = questions.filter(q => q.category === cat);
+  }
+
+  // Prioritize previously missed items
+  if (prioritizeMissed && state.missedItems.length > 0 && Math.random() < 0.5) {
+    const missedQs = questions.filter(q => state.missedItems.includes(q.text));
+    if (missedQs.length > 0) {
+      const recentTexts = state.history.slice(-3).map(h => h.question);
+      const available = missedQs.filter(q => !recentTexts.includes(q.text));
+      if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
+    }
+  }
+
+  const recentTexts = state.history.slice(-6).map(h => h.question);
+  const available = questions.filter(q => !recentTexts.includes(q.text));
+  const pool = available.length > 0 ? available : questions;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ============================================================
+// DISPLAY / ANSWER
+// ============================================================
+function displayQuestion(q) {
+  state.currentQuestion = q;
+  state.answered = false;
+  document.getElementById('questionText').textContent = q.text;
+  document.getElementById('questionHint').textContent = (state.roundActive && state.roundHideHints) ? '' : (q.hint || '');
+  const catEl = document.getElementById('questionCategory');
+  catEl.textContent = q.category.toUpperCase();
+  catEl.className = `cat-${q.category}`;
+  document.getElementById('feedbackText').textContent = 'Click on the map to answer';
+  document.getElementById('feedbackText').className = '';
+  document.getElementById('distanceInfo').textContent = '';
+  document.getElementById('nextBtn').style.display = 'none';
+  document.getElementById('skipBtn').style.display = 'block';
+  markersLayer.clearLayers();
+  cocomLayer.clearLayers();
+  if (q.category === 'cocom') {
+    geoData.cocoms.forEach(c => {
+      const b = c.bounds;
+      cocomLayer.addLayer(L.rectangle([[b.latS, b.lonW],[b.latN, b.lonE]], { color:'#60a5fa', weight:1, fillOpacity:0.04, dashArray:'6,4', interactive:false }));
+    });
+  }
+}
+
+function handleMapClick(e) {
+  if (state.answered || !state.currentQuestion) return;
+  checkAnswer(e.latlng.lat, e.latlng.lng);
+}
+
+function checkAnswer(clickLat, clickLon) {
+  if (state.answered) return;
+  state.answered = true;
+  const q = state.currentQuestion;
+  let isCorrect = false, dist = 0;
+
+  if (q.bounds) {
+    const b = q.bounds;
+    if (clickLat >= b.latS && clickLat <= b.latN && clickLon >= b.lonW && clickLon <= b.lonE) { isCorrect = true; dist = 0; }
+    else { dist = haversine(clickLat, clickLon, q.lat, q.lon); }
+  } else {
+    dist = haversine(clickLat, clickLon, q.lat, q.lon);
+    isCorrect = dist <= q.tolerance;
+  }
+
+  const isClose = !isCorrect && dist <= q.tolerance * 2.5;
+  state.total++;
+  state.catStats[q.category].t++;
+
+  const feedbackEl = document.getElementById('feedbackText');
+  const distInfo = document.getElementById('distanceInfo');
+
+  // Click marker
+  const clickIcon = L.divIcon({ className: '', html: `<svg width="20" height="20"><circle cx="10" cy="10" r="7" fill="${isCorrect?'#34d399':isClose?'#fbbf24':'#f87171'}" fill-opacity="0.85" stroke="white" stroke-width="2"/></svg>`, iconSize:[20,20], iconAnchor:[10,10] });
+  L.marker([clickLat, clickLon], { icon: clickIcon, interactive: false }).addTo(markersLayer);
+
+  if (isCorrect) {
+    state.correct++; state.streak++;
+    state.catStats[q.category].c++;
+    if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+    // Remove from missed items if it was there
+    state.missedItems = state.missedItems.filter(t => t !== q.text);
+    feedbackEl.className = 'success';
+    feedbackEl.textContent = dist < 50 ? `\u2713 Excellent! Right on target \u2014 ${q.fullDetail}` : `\u2713 Correct! ${q.fullDetail}`;
+    const labelIcon = L.divIcon({ className: '', html: `<div style="color:#34d399;font-size:12px;font-weight:600;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,0.8);transform:translateX(-50%)">${q.detail}</div>`, iconSize:[0,0], iconAnchor:[0,-12] });
+    L.marker([clickLat, clickLon], { icon: labelIcon, interactive: false }).addTo(markersLayer);
+  } else {
+    state.incorrect++; state.streak = 0;
+    if (!state.missedItems.includes(q.text)) state.missedItems.push(q.text);
+    feedbackEl.className = isClose ? 'close' : 'miss';
+    feedbackEl.textContent = isClose ? `\u2248 Close! The answer was: ${q.fullDetail}` : `\u2717 Missed. The answer was: ${q.fullDetail}`;
+    const targetIcon = L.divIcon({ className: '', html: `<svg width="36" height="36"><circle cx="18" cy="18" r="6" fill="#3b82f6" fill-opacity="0.9" stroke="white" stroke-width="2"/><circle cx="18" cy="18" r="6" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.6"><animate attributeName="r" values="6;18;6" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/></circle></svg>`, iconSize:[36,36], iconAnchor:[18,18] });
+    L.marker([q.lat, q.lon], { icon: targetIcon, interactive: false }).addTo(markersLayer);
+    const labelIcon = L.divIcon({ className: '', html: `<div style="color:#93c5fd;font-size:12px;font-weight:600;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,0.9);transform:translateX(-50%)">${q.detail}</div>`, iconSize:[0,0], iconAnchor:[0,-20] });
+    L.marker([q.lat, q.lon], { icon: labelIcon, interactive: false }).addTo(markersLayer);
+    L.polyline([[clickLat,clickLon],[q.lat,q.lon]], { color:'#475569', weight:1.5, dashArray:'6,6', opacity:0.6, interactive:false }).addTo(markersLayer);
+  }
+
+  distInfo.textContent = q.bounds && isCorrect ? 'Within the correct AOR' : `Distance: ${Math.round(dist)} km (~${Math.round(dist*0.54)} nm)`;
+
+  const histEntry = { question: q.text, detail: q.detail, category: q.category, result: isCorrect?'correct':isClose?'close':'miss', dist: Math.round(dist) };
+  state.history.push(histEntry);
+
+  // Round tracking
+  if (state.roundActive) {
+    state.roundAnswered++;
+    if (isCorrect) { state.roundCorrect++; state.roundStreak++; if (state.roundStreak > state.roundBestStreak) state.roundBestStreak = state.roundStreak; }
+    else { state.roundIncorrect++; state.roundStreak = 0; }
+    state.roundHistory.push(histEntry);
+    updateRoundBar();
+  }
+
+  updateScore();
+  updateHistory();
+
+  // Check if round is complete
+  if (state.roundActive && state.roundAnswered >= state.roundQuestions) {
+    document.getElementById('nextBtn').textContent = 'View Results \u2192';
+    document.getElementById('nextBtn').style.display = 'block';
+    document.getElementById('skipBtn').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('nextBtn').textContent = state.roundActive ? `Next (${state.roundAnswered}/${state.roundQuestions}) \u2192` : 'Next Question \u2192';
+  document.getElementById('nextBtn').style.display = 'block';
+  document.getElementById('skipBtn').style.display = 'none';
+}
+
+function skipQuestion() {
+  if (state.answered) return;
+  state.answered = true;
+  const q = state.currentQuestion;
+  state.total++; state.incorrect++; state.streak = 0;
+  state.catStats[q.category].t++;
+  if (!state.missedItems.includes(q.text)) state.missedItems.push(q.text);
+
+  document.getElementById('feedbackText').textContent = `Skipped. The answer was: ${q.fullDetail}`;
+  document.getElementById('feedbackText').className = 'miss';
+  document.getElementById('distanceInfo').textContent = '';
+
+  const targetIcon = L.divIcon({ className: '', html: `<svg width="36" height="36"><circle cx="18" cy="18" r="6" fill="#3b82f6" fill-opacity="0.9" stroke="white" stroke-width="2"/><circle cx="18" cy="18" r="6" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.6"><animate attributeName="r" values="6;18;6" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/></circle></svg>`, iconSize:[36,36], iconAnchor:[18,18] });
+  L.marker([q.lat, q.lon], { icon: targetIcon, interactive: false }).addTo(markersLayer);
+  const labelIcon = L.divIcon({ className: '', html: `<div style="color:#93c5fd;font-size:12px;font-weight:600;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,0.9);transform:translateX(-50%)">${q.detail}</div>`, iconSize:[0,0], iconAnchor:[0,-20] });
+  L.marker([q.lat, q.lon], { icon: labelIcon, interactive: false }).addTo(markersLayer);
+  map.panTo([q.lat, q.lon], { animate: true, duration: 0.5 });
+
+  const histEntry = { question: q.text, detail: q.detail, category: q.category, result: 'miss', dist: -1 };
+  state.history.push(histEntry);
+  if (state.roundActive) {
+    state.roundAnswered++; state.roundIncorrect++; state.roundStreak = 0;
+    state.roundHistory.push(histEntry);
+    updateRoundBar();
+  }
+
+  updateScore(); updateHistory();
+
+  if (state.roundActive && state.roundAnswered >= state.roundQuestions) {
+    document.getElementById('nextBtn').textContent = 'View Results \u2192';
+  } else {
+    document.getElementById('nextBtn').textContent = state.roundActive ? `Next (${state.roundAnswered}/${state.roundQuestions}) \u2192` : 'Next Question \u2192';
+  }
+  document.getElementById('nextBtn').style.display = 'block';
+  document.getElementById('skipBtn').style.display = 'none';
+}
+
+function nextQuestion() {
+  // If round just ended, show results
+  if (state.roundActive && state.roundAnswered >= state.roundQuestions) {
+    endRound(); return;
+  }
+  const cat = state.roundActive ? state.roundCategory : state.category;
+  const prioritize = state.roundActive ? state.roundPrioritizeMissed : false;
+  displayQuestion(pickQuestion(cat, prioritize));
+}
+
+// ============================================================
+// SCORE / HISTORY
+// ============================================================
+function updateScore() {
+  document.getElementById('correctCount').textContent = state.correct;
+  document.getElementById('incorrectCount').textContent = state.incorrect;
+  document.getElementById('streakCount').textContent = state.streak;
+  document.getElementById('totalCount').textContent = state.total;
+}
+
+function updateHistory() {
+  const list = document.getElementById('historyList');
+  const recent = state.history.slice(-10).reverse();
+  list.innerHTML = recent.map(h => {
+    const color = h.result==='correct'?'green':h.result==='close'?'yellow':'red';
+    const distText = h.dist > 0 ? ` (${h.dist} km)` : h.dist === 0 ? ' (in AOR)' : ' (skipped)';
+    return `<div class="historyItem"><div class="dot ${color}"></div><span>${h.detail}${distText}</span></div>`;
+  }).join('');
+}
+
+// ============================================================
+// ROUND MODE
+// ============================================================
+function showRoundConfig() {
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('resultsScreen').style.display = 'none';
+  document.getElementById('roundConfigScreen').style.display = 'flex';
+  // Pre-select weakness if data exists
+  const weak = getWeakestCategories();
+  if (weak) {
+    const opt = document.querySelector('#cfgCategory option[value="weakness"]');
+    const names = weak.map(c => c.charAt(0).toUpperCase()+c.slice(1)).join(', ');
+    opt.textContent = `Target Weakest Areas (${names})`;
+  }
+}
+
+function hideRoundConfig() {
+  document.getElementById('roundConfigScreen').style.display = 'none';
+  // If map not init'd yet, show start screen
+  if (!map) document.getElementById('startScreen').style.display = 'flex';
+}
+
+function startRound() {
+  document.getElementById('roundConfigScreen').style.display = 'none';
+  initMap();
+
+  state.roundActive = true;
+  state.roundQuestions = parseInt(document.getElementById('cfgQuestions').value) || 30;
+  state.roundTimeLimit = parseInt(document.getElementById('cfgTimeLimit').value) || 0;
+  state.roundCategory = document.getElementById('cfgCategory').value;
+  state.roundHideHints = document.getElementById('cfgHideHints').checked;
+  state.roundPrioritizeMissed = document.getElementById('cfgShuffleHard').checked;
+  state.roundAnswered = 0;
+  state.roundCorrect = 0;
+  state.roundIncorrect = 0;
+  state.roundStreak = 0;
+  state.roundBestStreak = 0;
+  state.roundHistory = [];
+  state.roundStartTime = Date.now();
+
+  // Show round bar
+  document.getElementById('roundBar').style.display = 'block';
+  document.getElementById('roundTotal').textContent = state.roundQuestions;
+  updateRoundBar();
+
+  // Start timer
+  if (state.roundTimerInterval) clearInterval(state.roundTimerInterval);
+  if (state.roundTimeLimit > 0) {
+    state.roundTimerInterval = setInterval(updateRoundTimer, 1000);
+  }
+  updateRoundTimer();
+
+  map.setView([20, 20], 3);
+  markersLayer.clearLayers();
+  nextQuestion();
+}
+
+function updateRoundBar() {
+  document.getElementById('roundCurrent').textContent = Math.min(state.roundAnswered + 1, state.roundQuestions);
+  const pct = (state.roundAnswered / state.roundQuestions) * 100;
+  document.getElementById('roundProgressBar').style.width = pct + '%';
+}
+
+function updateRoundTimer() {
+  const el = document.getElementById('roundTimer');
+  if (!state.roundActive) { el.textContent = '--:--'; return; }
+  const elapsed = Math.floor((Date.now() - state.roundStartTime) / 1000);
+  if (state.roundTimeLimit > 0) {
+    const remaining = Math.max(0, state.roundTimeLimit - elapsed);
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    el.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    el.className = remaining <= 60 ? 'roundTimer danger' : 'roundTimer';
+    if (remaining <= 0) { endRound(); }
+  } else {
+    const m = Math.floor(elapsed / 60), s = elapsed % 60;
+    el.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    el.className = 'roundTimer';
+  }
+}
+
+function endRound() {
+  if (state.roundTimerInterval) { clearInterval(state.roundTimerInterval); state.roundTimerInterval = null; }
+  state.roundActive = false;
+  document.getElementById('roundBar').style.display = 'none';
+  showResults();
+}
+
+function showResults() {
+  const rh = state.roundHistory;
+  const total = rh.length;
+  const correct = rh.filter(h => h.result === 'correct').length;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const elapsed = Math.floor((Date.now() - state.roundStartTime) / 1000);
+  const m = Math.floor(elapsed / 60), s = elapsed % 60;
+
+  document.getElementById('resCorrect').textContent = correct;
+  document.getElementById('resMissed').textContent = total - correct;
+  document.getElementById('resAccuracy').textContent = accuracy + '%';
+  document.getElementById('resBestStreak').textContent = state.roundBestStreak;
+  document.getElementById('resultsSubtitle').textContent = `${total} questions \u2022 ${m}:${s.toString().padStart(2,'0')} elapsed`;
+
+  // Grade title
+  const title = document.getElementById('resultsTitle');
+  if (accuracy >= 90) title.textContent = 'Outstanding!';
+  else if (accuracy >= 75) title.textContent = 'Solid Performance';
+  else if (accuracy >= 60) title.textContent = 'Getting There';
+  else title.textContent = 'Keep Drilling';
+
+  // Per-category breakdown
+  const cats = {};
+  rh.forEach(h => {
+    if (!cats[h.category]) cats[h.category] = { c: 0, t: 0 };
+    cats[h.category].t++;
+    if (h.result === 'correct') cats[h.category].c++;
+  });
+
+  const catColors = { capital:'#60a5fa', country:'#6ee7b7', chokepoint:'#f87171', waterway:'#34d399', keywater:'#38bdf8', fleet:'#fbbf24', cocom:'#c084fc' };
+  const breakdown = document.getElementById('catBreakdown');
+  breakdown.innerHTML = Object.entries(cats).map(([cat, v]) => {
+    const pct = Math.round((v.c / v.t) * 100);
+    return `<div class="cat-row">
+      <div class="cat-name" style="color:${catColors[cat]||'#94a3b8'}">${cat.charAt(0).toUpperCase()+cat.slice(1)}</div>
+      <div class="cat-bar-outer"><div class="cat-bar-inner" style="width:${pct}%;background:${catColors[cat]||'#3b82f6'}"></div></div>
+      <div class="cat-pct">${v.c}/${v.t} (${pct}%)</div>
+    </div>`;
+  }).join('');
+
+  // Missed items list
+  const missed = rh.filter(h => h.result !== 'correct');
+  const missedSection = document.getElementById('missedSection');
+  const missedList = document.getElementById('missedList');
+  if (missed.length > 0) {
+    missedSection.style.display = 'block';
+    missedList.innerHTML = missed.map(h =>
+      `<div class="missed-item">${h.question} &mdash; <span class="correct-answer">${h.detail}</span></div>`
+    ).join('');
+  } else {
+    missedSection.style.display = 'none';
+  }
+
+  document.getElementById('resultsScreen').style.display = 'flex';
+}
+
+function backToFreePlay() {
+  document.getElementById('resultsScreen').style.display = 'none';
+  state.roundActive = false;
+  document.getElementById('roundBar').style.display = 'none';
+  nextQuestion();
+}
+
+function goHome() {
+  if (state.roundActive) {
+    if (!confirm('Leave this round and return to the home screen?')) return;
+    if (state.roundTimerInterval) { clearInterval(state.roundTimerInterval); state.roundTimerInterval = null; }
+    state.roundActive = false;
+  }
+  document.getElementById('roundBar').style.display = 'none';
+  document.getElementById('resultsScreen').style.display = 'none';
+  document.getElementById('roundConfigScreen').style.display = 'none';
+  document.getElementById('startScreen').style.display = 'flex';
+}
+
+// ============================================================
+// RESET
+// ============================================================
+function resetQuiz() {
+  if (!confirm('Reset ALL scores, history, and weakness data?')) return;
+  state.correct = 0; state.incorrect = 0; state.streak = 0; state.bestStreak = 0; state.total = 0;
+  state.history = []; state.missedItems = [];
+  state.catStats = { capital:{c:0,t:0}, country:{c:0,t:0}, chokepoint:{c:0,t:0}, waterway:{c:0,t:0}, keywater:{c:0,t:0}, fleet:{c:0,t:0}, cocom:{c:0,t:0} };
+  state.answered = false; state.currentQuestion = null;
+  state.roundActive = false;
+  if (state.roundTimerInterval) { clearInterval(state.roundTimerInterval); state.roundTimerInterval = null; }
+  document.getElementById('roundBar').style.display = 'none';
+  if (markersLayer) markersLayer.clearLayers();
+  if (cocomLayer) cocomLayer.clearLayers();
+  updateScore();
+  document.getElementById('historyList').innerHTML = '';
+  if (map) map.setView([20, 20], 3);
+  nextQuestion();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function startFreePlay() {
+  document.getElementById('startScreen').style.display = 'none';
+  initMap();
+  nextQuestion();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('nextBtn').addEventListener('click', nextQuestion);
+  document.getElementById('skipBtn').addEventListener('click', skipQuestion);
+  document.getElementById('resetQuiz').addEventListener('click', resetQuiz);
+  document.getElementById('homeBtn').addEventListener('click', goHome);
+  document.getElementById('newRoundBtn').addEventListener('click', showRoundConfig);
+  document.getElementById('endRoundBtn').addEventListener('click', function() {
+    if (confirm('End this round early and see results?')) endRound();
+  });
+
+  document.getElementById('categoryFilter').addEventListener('change', function(e) {
+    state.category = e.target.value;
+    if (!state.roundActive && state.currentQuestion && !state.answered) nextQuestion();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    // Don't capture keys when overlays are open
+    if (document.getElementById('startScreen').style.display !== 'none' ||
+        document.getElementById('roundConfigScreen').style.display === 'flex' ||
+        document.getElementById('resultsScreen').style.display === 'flex') return;
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if ((e.key === 'Enter' || e.key === ' ') && state.answered) { e.preventDefault(); nextQuestion(); }
+    if ((e.key === 's' || e.key === 'S') && !state.answered && state.currentQuestion) { skipQuestion(); }
+    if (e.key === 'r' || e.key === 'R') { if (map) map.setView([20, 20], 3); }
+  });
+});
+</script>
+</body>
+</html>
